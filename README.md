@@ -1,7 +1,7 @@
 Customer Data Analysis Report
  # Customer Data Analysis Report
  # CODE1
-This Python script automates the generation of detailed PDF reports based on customer dataset analysis using AI. It first loads customer data from CSV files, performs statistical analysis on numerical and categorical columns, and then uses Google’s Generative AI model to generate a structured report. The report includes insights, trends, customer segments, dashboard recommendations, and graph placeholders, all formatted for PDF generation. The AI's response is parsed and formatted using the reportlab library, which creates a professional PDF with headings, paragraphs, and graph placeholders. The final PDF report, along with a list of required graphs, is saved, enabling businesses to automate data analysis reporting.
+This Python script automates the generation of detailed PDF reports based on customer dataset analysis using AI. It first loads customer data from CSV files, performs statistical analysis on numerical and categorical columns, and then uses an API AI model to generate a structured report. The report includes insights, trends, customer segments, dashboard recommendations, and graph placeholders, all formatted for PDF generation. The AI's response is parsed and formatted using the reportlab library, which creates a professional PDF with headings, paragraphs, and graph placeholders. The final PDF report, along with a list of required graphs, is saved, enabling businesses to automate data analysis reporting.
  
 ## Output
 Data loaded successfully from: customers-10000.csv
@@ -86,4 +86,135 @@ Output Tokens: 4616
 
 You: exit
 
-## CODE2 
+# CODE2 
+This Python script generates code to create various types of graphs from a CSV file based on user input prompts. It supports a wide range of graph types, including Histograms, Bar charts, Scatter plots, Pie charts, Box plots, Violin plots, Area charts, and Heatmaps. The user provides a prompt in the format "GRAPH_TYPE [TOP=NUMBER | TOP=ALL]: COLUMN_NAME[s] [vs COLUMN_NAME[s]] [grouped by CATEGORICAL_COLUMN]". The script reads the specified CSV file, processes the prompt, and generates the corresponding Python code for the graph. It validates the input and ensures the columns exist and are suitable for the chosen graph type (e.g., numeric for histograms or scatter plots). The generated Python code includes necessary imports, data loading, and plotting commands. After generating the code, the user can choose to execute it, which will generate and save the graph as a PNG file.
+
+## Output
+
+Enter graph requests, one per line. Type 'done' when finished.
+
+For Bar/Pie charts, you can specify 'TOP=NUMBER' or 'TOP=ALL' (e.g., 'Bar chart TOP=5: Country')
+
+> Bar chart TOP=5: Subscription Date
+
+> Pie chart TOP=ALL: Country
+
+> Bar chart TOP=10: Country
+
+> Bar chart TOP=5: Company
+
+> Pie chart TOP=5: Country
+
+> Scatter plot: Index vs Index
+
+> Histogram: Index
+
+> Bar chart TOP=10: Country
+
+> Bar chart TOP=10: Company
+
+> Bar chart TOP=10: Website
+
+> Bar chart TOP=20: First Name
+
+> Bar chart TOP=20: Last Name
+
+> Line chart: Index vs Index
+
+> Line chart (monthly): Subscription Date
+
+> Bar chart TOP=5: Country
+
+> done
+
+Generated Python Code for 'Bar chart TOP=5: Subscription Date':
+
+
+import pandas as pd
+
+import matplotlib.pyplot as plt
+
+import seaborn as sns
+
+df = pd.read_csv('customers-10000.csv')
+
+value_counts = df['Subscription Date'].value_counts()
+
+value_counts = value_counts.head(5)
+
+plt.figure(figsize=(8, 6))
+
+value_counts.plot(kind='bar')
+
+plt.title('Bar Chart of Subscription Date (Top 5 Categories)')
+
+plt.xlabel('Subscription Date')
+
+plt.ylabel('Count')
+
+plt.savefig('barchart_Subscription Date.png')
+
+plt.show()
+
+
+
+Generated Python Code for 'Pie chart TOP=ALL: Country':
+
+import pandas as pd
+
+import matplotlib.pyplot as plt
+
+import seaborn as sns
+
+
+df = pd.read_csv('customers-10000.csv')
+
+value_counts = df['Country'].value_counts()
+
+plt.figure(figsize=(8, 6))
+
+plt.pie(value_counts, labels=value_counts.index, autopct='%1.1f%%', startangle=90)
+
+plt.title('Pie Chart of Country')
+
+plt.savefig('piechart_Country.png')
+
+plt.show()
+
+ETC...
+
+Generated Python Code for 'Bar chart TOP=5: Country':
+
+
+import pandas as pd
+
+import matplotlib.pyplot as plt
+
+import seaborn as sns
+
+df = pd.read_csv('customers-10000.csv')
+
+
+value_counts = df['Country'].value_counts()
+
+value_counts = value_counts.head(5)
+
+plt.figure(figsize=(8, 6))
+
+value_counts.plot(kind='bar')
+
+plt.title('Bar Chart of Country (Top 5 Categories)')
+
+plt.xlabel('Country')
+
+plt.ylabel('Count')
+
+plt.savefig('barchart_Country.png')
+
+plt.show()
+
+
+Execute all generated code snippets to create graphs? (yes/no): yes
+
+# Final PDF
+once the two are used together the PNG files can be added to the PDF and complete a fully AI report.
