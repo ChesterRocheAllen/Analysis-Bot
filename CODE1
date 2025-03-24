@@ -1,0 +1,259 @@
+import time
+import csv
+from pydantic import BaseModel
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import PydanticOutputParser
+import pandas as pd
+import os
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer # Import for PDF generation
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle # Import styles
+from reportlab.lib.units import inch # Import units
+from reportlab.lib.enums import TA_CENTER, TA_LEFT # Import text alignment
+
+GOOGLE_API_KEY = "*************************************"  # Replace with your Google API key
+
+if not GOOGLE_API_KEY:
+    raise ValueError("GOOGLE_API_KEY is not set in the environment variables!")
+
+class ResearchResponse(BaseModel):
+    topic: str
+    summary: str
+    insights: list[str]
+    trends: list[str]
+    customer_segments: list[str]
+    dashboard_recommendations: list[str]
+    tools_used: list[str]
+    report_summary: str
+    report_content: str
+    graph_list: list[str]
+
+llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash-thinking-exp-01-21", google_api_key=GOOGLE_API_KEY)
+
+parser = PydanticOutputParser(pydantic_object=ResearchResponse)
+
+def read_csv_data(csv_paths):
+    """Reads data from multiple CSV files and combines them into a Pandas DataFrame."""
+    all_data = []
+    for csv_path in csv_paths:
+        try:
+            df = pd.read_csv(csv_path)
+            all_data.append(df)
+            print(f"Data loaded successfully from: {csv_path}")
+        except Exception as e:
+            print(f"Error reading CSV: {csv_path} - {e}")
+            continue
+    if not all_data:
+        return None
+    combined_df = pd.concat(all_data, ignore_index=True)
+    return combined_df
+
+def analyze_csv_data(df):
+    """Performs basic analysis on the CSV data and generates a text report summary."""
+    if df is None:
+        return {}, "No data to analyze."
+
+    analysis_results = {}
+    report_summary_parts = []
+
+    report_summary_parts.append(f"Analyzed customer dataset with {df.shape[0]} entries and {df.shape[1]} columns.")
+
+    numerical_cols = df.select_dtypes(include=['number']).columns
+    for column in numerical_cols:
+        col_data = df[column]
+        analysis_results[column] = {
+            "type": "numerical",
+            "mean": col_data.mean(),
+            "median": col_data.median(),
+            "std": col_data.std(),
+            "min": col_data.min(),
+            "max": col_data.max()
+        }
+        report_summary_parts.append(f"\nNumerical column '{column}': Mean={analysis_results[column]['mean']:.2f}, Median={analysis_results[column]['median']:.2f}, Std Dev={analysis_results[column]['std']:.2f}")
+
+    categorical_cols = df.select_dtypes(exclude=['number', 'datetime']).columns
+    for column in categorical_cols:
+        value_counts = df[column].value_counts()
+        analysis_results[column] = {
+            "type": "categorical",
+            "value_counts": value_counts.to_dict()
+        }
+        report_summary_parts.append(f"\nCategorical column '{column}': Top values = {value_counts.head(5).to_dict()}")
+
+    if 'Subscription Date' in df.columns:
+        report_summary_parts.append("\nIdentified 'Subscription Date' column for potential trend analysis.")
+        analysis_results['subscription_trend_possible'] = True
+    else:
+        analysis_results['subscription_trend_possible'] = False
+
+    report_summary = "\n".join(report_summary_parts)
+    return analysis_results, report_summary
+
+
+csv_paths = [Insert CVS file here] 
+csv_data = read_csv_data(csv_paths)
+
+if csv_data is None:
+    print("No CSV content could be loaded.")
+    exit()
+
+analysis_results, report_summary = analyze_csv_data(csv_data)
+
+
+prompt = ChatPromptTemplate.from_messages(
+    [
+        ("system",
+         """
+         You are an expert data analyst specializing in customer data and report generation.
+         You have performed an initial analysis on a customer dataset and have a summary report.
+         Your task is to write a detailed report in a format suitable for PDF generation based on this analysis.
+
+         **Analysis Report Summary:**
+         {analysis_report}
+
+         Based on the analysis report summary, please generate a detailed report.
+         The report should include the following sections, formatted for PDF:
+
+         1.  **Executive Summary:** A brief overview of the key findings.
+         2.  **Key Insights:**  Elaborate on the most important findings from the data analysis.
+         3.  **Trends and Patterns:** Identify and describe significant trends and patterns observed in the data.
+         4.  **Customer Segments:** Suggest potential customer segments based on the data and explain the rationale.
+         5.  **Dashboard Recommendations:**  Propose visualizations and key performance indicators (KPIs) for a customer dashboard. Explain why these are important.
+         6.  **Recommendations and Next Steps:**  Suggest actionable recommendations based on the analysis and potential next steps for further investigation or business action.
+
+         **Graph Placeholders:**  Within the report, identify where graphs would be most effective to visualize the data and support your points.  Insert placeholders for these graphs in the format: '[[GRAPH: Type of Graph - Columns for Graph]]'.  Use double square brackets to make them easily identifiable in the PDF content. For example: '[[GRAPH: Histogram - Age]]' or '[[GRAPH: Bar Chart - City]]'.
+
+         **List of Graphs Needed:** At the end of the report, include a section titled "List of Graphs Needed" which lists each graph placeholder with a clear description of the graph type and the columns it should display.  Format this list clearly.
+
+         **PDF Formatting Considerations:** Structure the report with clear headings and paragraphs.  Use formatting that translates well to PDF (e.g., avoid complex Word-specific formatting). Aim for a professional and readable report layout.
+
+         Wrap your output in this JSON format and provide no other text. Include two main fields: 'report_content' (the full report text including graph placeholders formatted for PDF) and 'graph_list' (a list of strings describing each graph needed).
+
+         {format_instructions}
+         """),
+        ("human", "{query}"),
+    ]
+).partial(format_instructions=parser.get_format_instructions())
+
+chat_history = []
+
+print("Customer Data PDF Report Generation Chatbot initialized. Type 'exit' to end the conversation.")
+
+while True:
+    query = input("You: ")
+    if query.lower() == 'exit':
+        print("Chatbot session ended.")
+        break
+
+    start_time = time.time()
+    formatted_prompt = prompt.format_prompt(
+        query=query,
+        analysis_report=report_summary,
+        chat_history="\n".join(chat_history)
+    )
+    raw_response = llm.invoke(formatted_prompt)
+    end_time = time.time()
+    response_time = end_time - start_time
+
+    try:
+        structured_response = parser.parse(raw_response.content)
+
+        input_tokens = raw_response.usage_metadata.get('input_tokens', 'N/A')
+        output_tokens = raw_response.usage_metadata.get('output_tokens', 'N/A')
+
+        print("\n--- Data PDF Report Generation Assistant Response ---")
+        print(f"Topic: {structured_response.topic}")
+        print(f"\nSummary: {structured_response.summary}")
+        if structured_response.insights:
+            print("\nKey Insights:")
+            for insight in structured_response.insights:
+                print(f"- {insight}")
+        if structured_response.trends:
+            print("\nTrends:")
+            for trend in structured_response.trends:
+                print(f"- {trend}")
+        if structured_response.customer_segments:
+            print("\nCustomer Segments:")
+            for segment in structured_response.customer_segments:
+                print(f"- {segment}")
+        if structured_response.dashboard_recommendations:
+            print("\nDashboard Recommendations:")
+            for recommendation in structured_response.dashboard_recommendations:
+                print(f"- {recommendation}")
+        if structured_response.tools_used:
+            print("\nTools Mentioned:")
+            for tool in structured_response.tools_used:
+                print(f"- {tool}")
+        if structured_response.report_summary:
+            print("\nReport Summary:")
+            print(structured_response.report_summary)
+
+        if structured_response.report_content:
+            report_filename = "customer_data_report.pdf"
+            doc = SimpleDocTemplate(report_filename)
+            styles = getSampleStyleSheet()
+            Story = []
+
+            # Custom styles for headings and placeholders
+            title_style = ParagraphStyle(name='TitleStyle', parent=styles['h1'], alignment=TA_CENTER)
+            heading1_style = ParagraphStyle(name='Heading1Style', parent=styles['h2'], spaceBefore=12, spaceAfter=6)
+            heading2_style = ParagraphStyle(name='Heading2Style', parent=styles['h3'], spaceBefore=10, spaceAfter=4)
+            normal_style = styles['Normal']
+            graph_placeholder_style = ParagraphStyle(name='GraphPlaceholderStyle', parent=styles['Normal'], textColor="#808080", fontStyle='italic') # Grey italic for placeholders
+
+
+            report_text = structured_response.report_content.split('\n') # Split into lines for paragraphs
+
+            Story.append(Paragraph(structured_response.topic, title_style)) # Report Title
+            Story.append(Spacer(1, 0.2*inch))
+
+            current_section = None # Keep track of section for formatting
+
+            for line in report_text:
+                line = line.strip()
+                if not line: # Skip empty lines
+                    continue
+
+                if line.startswith("## "): # Section Heading 1
+                    section_title = line[3:]
+                    Story.append(Paragraph(section_title, heading1_style))
+                    current_section = section_title # Update current section
+                elif line.startswith("### "): # Section Heading 2
+                    subsection_title = line[4:]
+                    Story.append(Paragraph(subsection_title, heading2_style))
+                elif line.startswith("[[GRAPH:"): # Graph Placeholder
+                    Story.append(Paragraph(line, graph_placeholder_style)) # Use placeholder style
+                else: # Normal paragraph text
+                    Story.append(Paragraph(line, normal_style))
+                Story.append(Spacer(1, 0.1*inch)) # Small space after each paragraph/heading
+
+
+            if structured_response.graph_list:
+                Story.append(Paragraph("List of Graphs Needed", heading1_style))
+                for graph_desc in structured_response.graph_list:
+                    Story.append(Paragraph(f"- {graph_desc}", normal_style))
+                    Story.append(Spacer(1, 0.05*inch)) # Smaller space in list
+
+
+            doc.build(Story)
+            print(f"\nDetailed PDF Report saved to: {report_filename}")
+
+
+        if structured_response.graph_list:
+            print("\nList of Graphs Needed:")
+            for graph_desc in structured_response.graph_list:
+                print(f"- {graph_desc}")
+
+
+        print("\n--- Response Info ---")
+        print(f"Response Time: {response_time:.2f} seconds")
+        print(f"Input Tokens: {input_tokens}")
+        print(f"Output Tokens: {output_tokens}")
+        print("\n--- End of Response ---\n")
+
+        chat_history.append(f"User: {query}")
+        chat_history.append(f"Assistant: {structured_response.summary} (Response Time: {response_time:.2f}s, Input Tokens: {input_tokens}, Output Tokens: {output_tokens})")
+
+    except Exception as e:
+        print("Error parsing response:", e)
+        print("Raw Response -", raw_response)
