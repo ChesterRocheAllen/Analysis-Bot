@@ -1,0 +1,253 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+def generate_graph_code(csv_file, prompt):
+    """
+    Generates Python code to create graphs based on a CSV file and a prompt.
+
+    unless stated otherwise show all the data on the graphs do not do just the first 10 unless stated otherwise
+
+    Args:
+        csv_file (str): Path to the CSV file.
+        prompt (str): Prompt describing the graph to create.
+                       Format: "GRAPH_TYPE [ TOP=NUMBER | TOP=ALL ]: COLUMN_NAME[s] [vs COLUMN_NAME[s]] [grouped by CATEGORICAL_COLUMN]"
+                       Supported GRAPH_TYPEs: Histogram, Bar chart, Scatter plot, Pie chart, Box plot, Violin plot, Area chart, Heatmap
+
+    Returns:
+        str: Python code as a string, or an error message if prompt is invalid.
+    """
+    try:
+        df = pd.read_csv(csv_file)
+    except FileNotFoundError:
+        return f"Error: CSV file not found at '{csv_file}'."
+    except Exception as e:
+        return f"Error reading CSV file: {e}"
+
+    parts = prompt.split(":")
+    if len(parts) != 2:
+        return "Error: Invalid prompt format. Use 'GRAPH_TYPE [ TOP=NUMBER | TOP=ALL ]: COLUMN_NAME[s] [vs COLUMN_NAME[s]] [grouped by CATEGORICAL_COLUMN]'."
+
+    graph_type_part = parts[0].strip().lower()
+    options_str = parts[1].strip()
+
+    head_val = None
+    if "top=" in graph_type_part:
+        graph_type_parts = graph_type_part.split("top=")
+        graph_type = graph_type_parts[0].strip()
+        head_str = graph_type_parts[1].strip()
+        if head_str.lower() == "all":
+            head_val = "all"
+        else:
+            try:
+                head_val = int(head_str)
+                if head_val <= 0:
+                    return "Error: TOP value must be a positive integer or 'all'."
+            except ValueError:
+                return "Error: Invalid TOP value. Use a positive integer or 'all'."
+    else:
+        graph_type = graph_type_part
+
+
+    option_parts = options_str.split(" grouped by ")
+    columns_vs_group = option_parts[0]
+    group_col = option_parts[1].strip() if len(option_parts) > 1 else None
+
+    columns = [col.strip() for col in columns_vs_group.split(" vs ")]
+
+    code = ""
+    code += "import pandas as pd\n"
+    code += "import matplotlib.pyplot as plt\n"
+    code += "import seaborn as sns\n\n"
+    code += f"df = pd.read_csv('{csv_file}')\n\n"
+
+    if graph_type == "histogram":
+        if len(columns) != 1:
+            return "Error: Histogram requires one column name."
+        column_name = columns[0]
+        if column_name not in df.columns:
+            return f"Error: Column '{column_name}' not found in CSV file."
+        if not pd.api.types.is_numeric_dtype(df[column_name]):
+            return f"Error: Column '{column_name}' is not numeric and cannot be used for a histogram."
+
+        code += f"plt.figure(figsize=(8, 6))\n"
+        code += f"df['{column_name}'].hist()\n"
+        code += f"plt.title('Histogram of {column_name}')\n"
+        code += f"plt.xlabel('{column_name}')\n"
+        code += f"plt.ylabel('Frequency')\n"
+        code += f"plt.savefig('histogram_{column_name}.png')\n"
+        code += f"plt.show()\n"
+
+    elif graph_type == "bar chart":
+        if len(columns) != 1:
+            return "Error: Bar chart requires one column name."
+        column_name = columns[0]
+        if column_name not in df.columns:
+            return f"Error: Column '{column_name}' not found in CSV file."
+
+        if group_col: # Grouped Bar Chart
+            if group_col not in df.columns:
+                return f"Error: Grouping column '{group_col}' not found in CSV file."
+            code += f"grouped_data = df.groupby('{group_col}')['{column_name}'].value_counts().unstack(fill_value=0)\n"
+            code += f"grouped_data.plot(kind='bar', figsize=(10, 6))\n"
+            code += f"plt.title('Grouped Bar Chart of {column_name} by {group_col}')\n"
+            code += f"plt.xlabel('{group_col}')\n"
+            code += f"plt.ylabel('Count')\n"
+            code += f"plt.legend(title='{column_name}')\n"
+            code += f"plt.savefig('barchart_grouped_{column_name}_by_{group_col}.png')\n"
+            code += f"plt.show()\n"
+
+        else: # Simple Bar Chart
+            code += f"value_counts = df['{column_name}'].value_counts()\n"
+            if head_val != "all" and head_val is not None:
+                code += f"value_counts = value_counts.head({head_val})\n"
+            code += f"plt.figure(figsize=(8, 6))\n"
+            code += f"value_counts.plot(kind='bar')\n"
+            title = f'Bar Chart of {column_name}'
+            if head_val != "all" and head_val is not None:
+                title += f" (Top {head_val} Categories)"
+            code += f"plt.title('{title}')\n"
+            code += f"plt.xlabel('{column_name}')\n"
+            code += f"plt.ylabel('Count')\n"
+            code += f"plt.savefig('barchart_{column_name}.png')\n"
+            code += f"plt.show()\n"
+
+    elif graph_type == "scatter plot":
+        if len(columns) != 2:
+            return "Error: Scatter plot requires two column names (X vs Y)."
+        x_col = columns[0]
+        y_col = columns[1]
+        if x_col not in df.columns or y_col not in df.columns:
+            return f"Error: Column '{x_col}' or '{y_col}' not found in CSV file."
+        if not pd.api.types.is_numeric_dtype(df[x_col]) or not pd.api.types.is_numeric_dtype(df[y_col]):
+            return f"Error: Columns '{x_col}' and '{y_col}' must be numeric for a scatter plot."
+
+        code += f"plt.figure(figsize=(8, 6))\n"
+        code += f"plt.scatter(df['{x_col}'], df['{y_col}'])\n"
+        code += f"plt.title('Scatter Plot of {y_col} vs {x_col}')\n"
+        code += f"plt.xlabel('{x_col}')\n"
+        code += f"plt.ylabel('{y_col}')\n"
+        code += f"plt.savefig('scatterplot_{x_col}_vs_{y_col}.png')\n"
+        code += f"plt.show()\n"
+
+    elif graph_type == "pie chart":
+        if len(columns) != 1:
+            return "Error: Pie chart requires one column name."
+        column_name = columns[0]
+        if column_name not in df.columns:
+            return f"Error: Column '{column_name}' not found in CSV file."
+
+        code += f"value_counts = df['{column_name}'].value_counts()\n"
+        if head_val != "all" and head_val is not None:
+            code += f"value_counts = value_counts.head({head_val})\n"
+        code += f"plt.figure(figsize=(8, 6))\n"
+        code += f"plt.pie(value_counts, labels=value_counts.index, autopct='%1.1f%%', startangle=90)\n"
+        title = f'Pie Chart of {column_name}'
+        if head_val != "all" and head_val is not None:
+            title += f" (Top {head_val} Categories)"
+        code += f"plt.title('{title}')\n"
+        code += f"plt.savefig('piechart_{column_name}.png')\n"
+        code += f"plt.show()\n"
+
+    elif graph_type == "box plot":
+        if len(columns) != 1:
+            return "Error: Box plot requires one column name."
+        column_name = columns[0]
+        if column_name not in df.columns:
+            return f"Error: Column '{column_name}' not found in CSV file."
+        if not pd.api.types.is_numeric_dtype(df[column_name]):
+            return f"Error: Column '{column_name}' is not numeric and cannot be used for a box plot."
+
+        code += f"plt.figure(figsize=(8, 6))\n"
+        code += f"sns.boxplot(y=df['{column_name}'])\n"
+        code += f"plt.title('Box Plot of {column_name}')\n"
+        code += f"plt.ylabel('{column_name}')\n"
+        code += f"plt.savefig('boxplot_{column_name}.png')\n"
+        code += f"plt.show()\n"
+
+    elif graph_type == "violin plot":
+        if len(columns) != 1:
+            return "Error: Violin plot requires one column name."
+        column_name = columns[0]
+        if column_name not in df.columns:
+            return f"Error: Column '{column_name}' not found in CSV file."
+        if not pd.api.types.is_numeric_dtype(df[column_name]):
+            return f"Error: Column '{column_name}' is not numeric and cannot be used for a violin plot."
+
+        code += f"plt.figure(figsize=(8, 6))\n"
+        code += f"sns.violinplot(y=df['{column_name}'])\n"
+        code += f"plt.title('Violin Plot of {column_name}')\n"
+        code += f"plt.ylabel('{column_name}')\n"
+        code += f"plt.savefig('violinplot_{column_name}.png')\n"
+        code += f"plt.show()\n"
+
+    elif graph_type == "area chart":
+        if len(columns) != 2:
+            return "Error: Area chart requires two column names (X vs Y) for basic area plot." # Can be extended for stacked area later
+        x_col = columns[0]
+        y_col = columns[1]
+        if x_col not in df.columns or y_col not in df.columns:
+            return f"Error: Column '{x_col}' or '{y_col}' not found in CSV file."
+        if not pd.api.types.is_numeric_dtype(df[x_col]) or not pd.api.types.is_numeric_dtype(df[y_col]):
+            return f"Error: Columns '{x_col}' and '{y_col}' should ideally be numeric for an area chart (or X can be time-based)."
+
+        code += f"plt.figure(figsize=(8, 6))\n"
+        code += f"plt.fill_between(df['{x_col}'], df['{y_col}'])\n"
+        code += f"plt.title('Area Chart of {y_col} vs {x_col}')\n"
+        code += f"plt.xlabel('{x_col}')\n"
+        code += f"plt.ylabel('{y_col}')\n"
+        code += f"plt.savefig('areachart_{y_col}_vs_{x_col}.png')\n"
+        code += f"plt.show()\n"
+
+    elif graph_type == "heatmap":
+        numerical_cols = df.select_dtypes(include=['number']).columns
+        if len(numerical_cols) < 2:
+            return "Error: Heatmap requires at least two numerical columns in the CSV."
+
+        code += f"numerical_df = df.select_dtypes(include=['number'])\n"
+        code += f"corr_matrix = numerical_df.corr()\n"
+        code += f"plt.figure(figsize=(10, 8))\n"
+        code += f"sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', fmt='.2f')\n"
+        code += f"plt.title('Correlation Heatmap')\n"
+        code += f"plt.savefig('heatmap_correlation.png')\n"
+        code += f"plt.show()\n"
+
+
+    else:
+        return f"Error: Unknown graph type: '{graph_type}'. Supported types are: Histogram, Bar chart, Scatter plot, Line chart, Pie chart, Box plot, Violin plot, Area chart, Heatmap."
+
+    return code
+
+if __name__ == "__main__":
+    csv_file_path = "customers-10000.csv" # Hardcoded CSV file path
+    graph_requests = [] # Initialize as empty list
+
+    print("Enter graph requests, one per line. Type 'done' when finished.")
+    print("For Bar/Pie charts, you can specify 'TOP=NUMBER' or 'TOP=ALL' (e.g., 'Bar chart TOP=5: Country')")
+
+    while True:
+        request = input("> ")
+        if request.lower() == 'done':
+            break
+        graph_requests.append(request)
+
+    all_generated_code = ""
+    for request in graph_requests:
+        generated_code = generate_graph_code(csv_file_path, request)
+        if generated_code.startswith("Error:"):
+            print(f"\nError for request '{request}': {generated_code}")
+        else:
+            print(f"\nGenerated Python Code for '{request}':\n")
+            print(generated_code)
+            all_generated_code += generated_code + "\n\n" # Accumulate all code snippets
+
+    if not all_generated_code.strip(): # Check if any code was generated successfully
+        print("\nNo graph code was generated due to errors.")
+    else:
+        execute_all_code = input("\nExecute all generated code snippets to create graphs? (yes/no): ").lower()
+        if execute_all_code == "yes":
+            try:
+                exec(all_generated_code)
+                print("\nAll graphs generated and saved.")
+            except Exception as e:
+                print(f"\nError executing combined code: {e}")
